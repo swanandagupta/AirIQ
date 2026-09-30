@@ -1,15 +1,23 @@
-﻿__pycache__/
-*.pyc
-*.pyo
-*.pyd
+# Python
+__pycache__/
+*.py[cod]
 .venv/
 venv/
 .env
-.claude/settings.local.json
+
+# Local tools/settings
+.claude/
+
+# Logs and local databases
+logs/
 *.log
 *.db
-*.mp4
 
-iotPROJ/database/train.csv
-iotPROJ/database/test.csv
-iotPROJ/backend/aqi_ml_model.pkl
+# Large media
+*.mp4
+*.mov
+
+# Large datasets/models
+database/train.csv
+database/test.csv
+backend/aqi_ml_model.pkl
