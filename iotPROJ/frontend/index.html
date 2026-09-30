@@ -1,0 +1,1161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>AirIQ — Chennai Air Quality Monitor</title>
+<meta name="description" content="Hyperlocal real-time air quality monitoring for Chennai, Tamil Nadu. IoT sensors + ML predictions.">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&family=DM+Mono:wght@400;500&family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;1,9..144,300&display=swap" rel="stylesheet">
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/socket.io-client@4.7.0/dist/socket.io.min.js"></script>
+
+<style>
+/* ═══════════════════════════════
+   DESIGN TOKENS
+═══════════════════════════════ */
+:root {
+  --ink:       #0d1117;
+  --ink-2:     #161b22;
+  --ink-3:     #21262d;
+  --border:    rgba(255,255,255,0.08);
+  --border-2:  rgba(255,255,255,0.14);
+  --muted:     #6e7681;
+  --soft:      #c9d1d9;
+  --bright:    #f0f6fc;
+  --teal:      #39d0d8;
+  --teal-dim:  rgba(57,208,216,0.15);
+  --amber:     #e6a817;
+  --red:       #f85149;
+  --green:     #3fb950;
+  --violet:    #bc8cff;
+  --orange:    #f0883e;
+  --mono:      'DM Mono', monospace;
+  --sans:      'DM Sans', sans-serif;
+  --serif:     'Fraunces', Georgia, serif;
+  --ease:      cubic-bezier(.22,1,.36,1);
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: var(--sans);
+  background: var(--ink);
+  color: var(--soft);
+  min-height: 100vh;
+  overflow-x: hidden;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+/* ── MAP FIX ── */
+.leaflet-container { background: #0a0f1a !important; font-family: var(--sans); }
+.leaflet-control-zoom, .leaflet-control-attribution { display: none !important; }
+.leaflet-popup-content-wrapper {
+  background: rgba(13,17,23,0.97) !important;
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--border-2) !important;
+  border-radius: 10px !important;
+  color: var(--soft) !important;
+  box-shadow: 0 8px 30px rgba(0,0,0,.7) !important;
+  padding: 0 !important;
+}
+.leaflet-popup-content { margin: 14px 16px !important; }
+.leaflet-popup-tip-container { display: none; }
+
+/* ── LAYOUT ── */
+.shell {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  min-height: 100vh;
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 0 16px;
+}
+
+/* ── HEADER ── */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 0 16px;
+  border-bottom: 1px solid var(--border);
+  gap: 20px;
+}
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.logo-mark {
+  width: 36px; height: 36px;
+  position: relative;
+  flex-shrink: 0;
+}
+.logo-mark svg { width: 36px; height: 36px; }
+.logo-ring {
+  animation: spin 12s linear infinite;
+  transform-origin: 18px 18px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.logo-text h1 {
+  font-family: var(--serif);
+  font-size: 20px;
+  font-weight: 400;
+  color: var(--bright);
+  letter-spacing: -0.3px;
+  font-style: italic;
+}
+.logo-text span {
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0.5px;
+  font-weight: 400;
+}
+.header-center {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.header-center svg { color: var(--teal); flex-shrink: 0; }
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.conn-pill {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  font-size: 11px;
+  font-family: var(--mono);
+  color: var(--muted);
+  letter-spacing: 0.3px;
+}
+.conn-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--amber);
+  box-shadow: 0 0 6px var(--amber);
+  animation: pulse-dot 1.4s ease infinite;
+}
+.conn-dot.live { background: var(--green); box-shadow: 0 0 6px var(--green); animation: none; }
+.conn-dot.dead { background: var(--red); box-shadow: 0 0 6px var(--red); animation: none; }
+@keyframes pulse-dot { 0%,100%{opacity:1}50%{opacity:.2} }
+.nav-link {
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  font-size: 12px;
+  color: var(--soft);
+  text-decoration: none;
+  transition: all .2s var(--ease);
+}
+.nav-link:hover { border-color: var(--teal); color: var(--teal); background: var(--teal-dim); }
+
+/* ── MAIN GRID ── */
+.main {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: 16px;
+  padding: 16px 0;
+  min-height: 0;
+}
+
+/* ── CARDS ── */
+.card {
+  background: var(--ink-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  transition: border-color .2s;
+}
+.card:hover { border-color: var(--border-2); }
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  gap: 10px;
+}
+.card-label {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.badge {
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  letter-spacing: 0.5px;
+}
+.badge-live { background: rgba(248,81,73,.12); color: var(--red); border: 1px solid rgba(248,81,73,.25); }
+.badge-ml { background: rgba(188,140,255,.1); color: var(--violet); border: 1px solid rgba(188,140,255,.2); }
+
+/* ── LEFT COLUMN ── */
+.col-left { display: flex; flex-direction: column; gap: 14px; }
+
+/* ── MAP CARD ── */
+.map-card { flex: 1; display: flex; flex-direction: column; min-height: 400px; }
+#map {
+  flex: 1;
+  min-height: 360px;
+  width: 100%;
+  display: block;
+}
+.map-footer {
+  padding: 10px 14px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.map-controls { display: flex; gap: 6px; }
+.map-btn {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--sans);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all .18s;
+}
+.map-btn.active, .map-btn:hover { border-color: var(--teal); color: var(--teal); background: var(--teal-dim); }
+.aqi-scale {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 10px;
+  color: var(--muted);
+}
+.scale-bar {
+  width: 120px; height: 5px;
+  border-radius: 3px;
+  background: linear-gradient(to right, #3fb950, #e6a817, #f0883e, #f85149, #bc8cff);
+}
+.scale-ends { display: flex; justify-content: space-between; width: 120px; font-size: 9px; margin-top: 2px; }
+
+/* ── BOTTOM ROW ── */
+.bottom-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+
+/* ── TELEMETRY ── */
+.telemetry-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 14px; }
+.tele-box {
+  padding: 12px;
+  background: var(--ink-3);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.tele-name { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 6px; }
+.tele-num {
+  font-family: var(--mono);
+  font-size: 22px;
+  color: var(--teal);
+  font-weight: 500;
+}
+.tele-unit { font-size: 10px; color: var(--muted); margin-top: 2px; }
+
+/* ── HEALTH CARD ── */
+.health-list { padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; }
+.health-item {
+  padding: 9px 12px;
+  background: var(--ink-3);
+  border-left: 2px solid var(--green);
+  border-radius: 0 6px 6px 0;
+  font-size: 12px;
+  color: var(--soft);
+  line-height: 1.45;
+}
+.health-item.warn { border-left-color: var(--amber); }
+.health-item.alert { border-left-color: var(--red); }
+.health-placeholder { padding: 24px 14px; text-align: center; color: var(--muted); font-size: 12px; font-style: italic; }
+
+/* ── RIGHT COLUMN ── */
+.col-right { display: flex; flex-direction: column; gap: 14px; }
+
+/* ── AQI CARD ── */
+.aqi-card { padding: 20px; }
+.aqi-score-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px 0 16px;
+}
+.aqi-ring-wrap {
+  position: relative;
+  width: 180px; height: 180px;
+  margin: 0 auto;
+}
+.aqi-ring-svg { width: 180px; height: 180px; display: block; }
+.aqi-arc { transition: stroke-dasharray .8s var(--ease), stroke .5s; }
+.aqi-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+.aqi-number {
+  font-family: var(--mono);
+  font-size: 52px;
+  font-weight: 500;
+  color: var(--bright);
+  line-height: 1;
+  letter-spacing: -2px;
+}
+.aqi-label {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 4px;
+  font-weight: 400;
+  letter-spacing: 0.3px;
+}
+.aqi-category {
+  margin-top: 12px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--teal);
+  text-align: center;
+}
+.aqi-meta {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 14px;
+}
+.meta-box {
+  background: var(--ink-3);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  text-align: center;
+}
+.meta-name { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px; }
+.meta-val { font-family: var(--mono); font-size: 16px; color: var(--soft); margin-top: 3px; }
+.meta-unit { font-size: 9px; color: var(--muted); }
+
+/* ── CHART CARD ── */
+.chart-card { }
+.chart-inner { padding: 14px; }
+.chart-wrap { height: 130px; position: relative; }
+.time-btns { display: flex; gap: 4px; }
+.tbtn {
+  padding: 3px 9px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all .18s;
+}
+.tbtn.active, .tbtn:hover { border-color: var(--teal); color: var(--teal); background: var(--teal-dim); }
+
+/* ── FEED CARD ── */
+.feed-tabs { display: flex; border-bottom: 1px solid var(--border); }
+.ftab {
+  flex: 1; padding: 10px 14px; background: none;
+  border: none; border-bottom: 2px solid transparent;
+  color: var(--muted); font-family: var(--sans); font-size: 12px;
+  cursor: pointer; transition: all .18s; font-weight: 500;
+  margin-bottom: -1px;
+}
+.ftab.active { color: var(--bright); border-bottom-color: var(--teal); }
+.feed-body { max-height: 220px; overflow-y: auto; }
+.feed-body::-webkit-scrollbar { width: 3px; }
+.feed-body::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 2px; }
+.feed-pane { display: none; padding: 10px 14px; flex-direction: column; gap: 6px; }
+.feed-pane.show { display: flex; }
+.feed-item {
+  display: flex; gap: 10px; align-items: flex-start;
+  padding: 8px 10px;
+  background: var(--ink-3);
+  border-radius: 7px;
+  border-left: 2px solid var(--border-2);
+  animation: fadein .25s var(--ease);
+}
+@keyframes fadein { from{opacity:0;transform:translateY(3px)} to{opacity:1;transform:none} }
+.feed-item.a { border-left-color: var(--amber); }
+.feed-item.d { border-left-color: var(--red); }
+.feed-item.i { border-left-color: var(--violet); }
+.feed-item.ok { border-left-color: var(--green); }
+.fi-ico { font-size: 13px; margin-top: 1px; flex-shrink: 0; }
+.fi-msg { font-size: 11px; color: var(--soft); line-height: 1.45; flex: 1; }
+.fi-time { font-family: var(--mono); font-size: 9px; color: var(--muted); margin-top: 2px; }
+.feed-empty { padding: 20px; text-align: center; font-size: 12px; color: var(--muted); font-style: italic; }
+.alert-badge {
+  background: rgba(248,81,73,.15);
+  color: var(--red);
+  border-radius: 100px;
+  font-size: 10px;
+  font-family: var(--mono);
+  padding: 2px 8px;
+  min-width: 22px;
+  text-align: center;
+}
+
+/* ── FOOTER ── */
+.footer {
+  border-top: 1px solid var(--border);
+  padding: 12px 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  color: var(--muted);
+  font-family: var(--mono);
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.footer-status { color: var(--soft); }
+
+/* ── SCROLLBAR GLOBAL ── */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 4px; }
+
+/* ── POPUP ── */
+.pop-aqi { font-family: var(--mono); font-size: 28px; font-weight: 500; line-height: 1; }
+.pop-cat { font-size: 11px; font-weight: 500; letter-spacing: 0.5px; text-transform: uppercase; margin: 4px 0 10px; }
+.pop-row { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); padding-top: 5px; margin-top: 5px; border-top: 1px solid var(--border); }
+.pop-row span { color: var(--soft); font-family: var(--mono); }
+
+/* ── MODAL UI ── */
+.modal-overlay {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(13, 17, 23, 0.85); backdrop-filter: blur(8px);
+  z-index: 9999;
+  align-items: center; justify-content: center;
+}
+.modal-overlay.show { display: flex; }
+.modal-box {
+  background: var(--ink-2);
+  border: 1px solid var(--border-2); border-radius: 12px;
+  width: 90%; max-width: 400px;
+  box-shadow: 0 16px 40px rgba(0,0,0,0.6);
+  padding: 20px;
+}
+.modal-head { display: flex; justify-content: space-between; margin-bottom: 20px; }
+.modal-title { font-size: 16px; font-weight: 500; color: var(--bright); }
+.modal-close { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 20px; line-height: 1; }
+.form-group { margin-bottom: 16px; }
+.form-label { display: block; font-size: 11px; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; letter-spacing: 0.5px; }
+.form-control {
+  width: 100%; padding: 10px 12px;
+  background: var(--ink-3); border: 1px solid var(--border);
+  color: var(--soft); font-family: var(--sans); font-size: 13px;
+  border-radius: 6px;
+}
+.form-control:focus { outline: none; border-color: var(--teal); }
+.btn-primary {
+  width: 100%; padding: 12px;
+  background: var(--teal); color: var(--ink);
+  border: none; border-radius: 6px; font-weight: 500;
+  cursor: pointer; transition: all .2s;
+}
+.btn-primary:hover { opacity: 0.9; }
+.btn-outline {
+  width: 100%; padding: 10px;
+  background: transparent; color: var(--teal);
+  border: 1px solid var(--teal); border-radius: 6px; font-weight: 500;
+  cursor: pointer; margin-top: 10px;
+}
+.modal-tab-bar { display: flex; margin-bottom: 20px; border-bottom: 1px solid var(--border); }
+.modal-tab { flex: 1; padding: 10px; background: none; border: none; color: var(--muted); cursor: pointer; font-size: 12px; border-bottom: 2px solid transparent; }
+.modal-tab.active { color: var(--teal); border-bottom-color: var(--teal); }
+.modal-pane { display: none; }
+.modal-pane.active { display: block; }
+
+/* ── RESPONSIVE ── */
+@media (max-width: 1100px) { .main { grid-template-columns: 1fr; } }
+@media (max-width: 700px) {
+  .bottom-row { grid-template-columns: 1fr; }
+  .header-center { display: none; }
+  #map { min-height: 260px; }
+}
+</style>
+</head>
+<body>
+
+<div class="shell">
+
+  <!-- ═══ HEADER ═══ -->
+  <header class="header">
+    <div class="logo">
+      <div class="logo-mark">
+        <svg viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="18" cy="18" r="15" stroke="rgba(57,208,216,0.2)" stroke-width="1"/>
+          <circle cx="18" cy="18" r="10" stroke="rgba(57,208,216,0.35)" stroke-width="1" stroke-dasharray="3 4" class="logo-ring"/>
+          <circle cx="18" cy="18" r="5" fill="none" stroke="#39d0d8" stroke-width="1.5"/>
+          <circle cx="18" cy="18" r="2" fill="#39d0d8"/>
+        </svg>
+      </div>
+      <div class="logo-text">
+        <h1>AirIQ</h1>
+        <span>Chennai Hyperlocal Monitor</span>
+      </div>
+    </div>
+
+    <div class="header-center">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>
+      VIT Chennai (Waiting for Input) — 12.8432°N, 80.1546°E
+    </div>
+
+    <div class="header-right">
+      <div class="conn-pill" id="connPill" style="cursor:pointer" title="Hardware Setup">
+        <div class="conn-dot dead" id="connDot"></div>
+        <span id="connText">Input yet to connect</span>
+      </div>
+      <a href="/heatmap" class="nav-link">Geospatial view →</a>
+    </div>
+  </header>
+
+  <!-- ═══ MAIN ═══ -->
+  <main class="main">
+
+    <!-- LEFT -->
+    <div class="col-left">
+
+      <!-- Map -->
+      <div class="card map-card">
+        <div class="card-head">
+          <span class="card-label">Live Spatial Coverage</span>
+          <div class="map-controls">
+            <button class="map-btn active" id="btnHeat">Heatmap</button>
+            <button class="map-btn" id="btnPins">Sensor pins</button>
+          </div>
+        </div>
+        <div id="map"></div>
+        <div class="map-footer">
+          <div class="aqi-scale">
+            <span>AQI</span>
+            <div>
+              <div class="scale-bar"></div>
+              <div class="scale-ends"><span>0 Good</span><span>Hazardous 500</span></div>
+            </div>
+          </div>
+          <div style="font-family:var(--mono);font-size:10px;color:var(--muted)" id="mapStatus">Awaiting data…</div>
+        </div>
+      </div>
+
+      <!-- Bottom row -->
+      <div class="bottom-row">
+
+        <!-- Telemetry -->
+        <div class="card">
+          <div class="card-head">
+            <span class="card-label">Sensor Telemetry</span>
+            <span class="badge badge-live">LIVE</span>
+          </div>
+          <div class="telemetry-grid">
+            <div class="tele-box">
+              <div class="tele-name">MQ-135</div>
+              <div class="tele-num" id="mq135">—</div>
+              <div class="tele-unit">VOC / General gas</div>
+            </div>
+            <div class="tele-box">
+              <div class="tele-name">MQ-137</div>
+              <div class="tele-num" id="mq137">—</div>
+              <div class="tele-unit">NH₃ Ammonia</div>
+            </div>
+            <div class="tele-box">
+              <div class="tele-name">Latitude</div>
+              <div class="tele-num" style="font-size:16px" id="tlat">12.8432</div>
+              <div class="tele-unit">°N</div>
+            </div>
+            <div class="tele-box">
+              <div class="tele-name">Longitude</div>
+              <div class="tele-num" style="font-size:16px" id="tlon">80.1546</div>
+              <div class="tele-unit">°E</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Health -->
+        <div class="card">
+          <div class="card-head">
+            <span class="card-label">Health Advisory</span>
+          </div>
+          <div id="healthList" class="health-list">
+            <div class="health-placeholder">Awaiting sensor data…</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- RIGHT -->
+    <div class="col-right">
+
+      <!-- AQI gauge -->
+      <div class="card aqi-card">
+        <div class="card-head" style="justify-content:space-between">
+          <span class="card-label">AQI Score</span>
+          <span class="badge badge-ml">ML Powered</span>
+        </div>
+        <div class="aqi-score-area">
+          <div class="aqi-ring-wrap">
+            <svg class="aqi-ring-svg" viewBox="0 0 180 180">
+              <defs>
+                <linearGradient id="arcGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                  <stop offset="0%" stop-color="#3fb950"/>
+                  <stop offset="40%" stop-color="#e6a817"/>
+                  <stop offset="75%" stop-color="#f85149"/>
+                  <stop offset="100%" stop-color="#bc8cff"/>
+                </linearGradient>
+              </defs>
+              <!-- track -->
+              <circle cx="90" cy="90" r="72" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="12"/>
+              <!-- arc -->
+              <circle cx="90" cy="90" r="72" fill="none"
+                stroke="url(#arcGrad)" stroke-width="12"
+                stroke-linecap="round"
+                stroke-dasharray="0 452"
+                transform="rotate(-90 90 90)"
+                id="aqiArc" class="aqi-arc"/>
+            </svg>
+            <div class="aqi-center">
+              <div class="aqi-number" id="aqiNum">—</div>
+              <div class="aqi-label">AQI Index</div>
+            </div>
+          </div>
+          <div class="aqi-category" id="aqiCat">Awaiting signal</div>
+        </div>
+        <div class="aqi-meta">
+          <div class="meta-box">
+            <div class="meta-name">PM2.5 equiv.</div>
+            <div class="meta-val" id="pm25">—</div>
+            <div class="meta-unit">µg/m³</div>
+          </div>
+          <div class="meta-box">
+            <div class="meta-name">Status</div>
+            <div class="meta-val" id="aqiStatus" style="font-size:13px;font-family:var(--sans)">—</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Trend chart -->
+      <div class="card">
+        <div class="card-head">
+          <span class="card-label">AQI Trend</span>
+          <div class="time-btns">
+            <button class="tbtn active" data-h="1">1H</button>
+            <button class="tbtn" data-h="6">6H</button>
+            <button class="tbtn" data-h="24">24H</button>
+          </div>
+        </div>
+        <div class="chart-inner">
+          <div class="chart-wrap"><canvas id="trendChart"></canvas></div>
+        </div>
+      </div>
+
+      <!-- Alerts + Insights -->
+      <div class="card">
+        <div class="card-head">
+          <span class="card-label">Feed</span>
+          <span class="alert-badge" id="alertBadge">0</span>
+        </div>
+        <div class="feed-tabs">
+          <button class="ftab active" data-tab="alerts">Alerts</button>
+          <button class="ftab" data-tab="insights">Insights</button>
+        </div>
+        <div class="feed-body">
+          <div class="feed-pane show" id="pane-alerts">
+            <div class="feed-empty">No active alerts — air quality nominal.</div>
+          </div>
+          <div class="feed-pane" id="pane-insights">
+            <div class="feed-empty">Aggregating intelligence…</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- ═══ FOOTER ═══ -->
+  <footer class="footer">
+    <span class="footer-status" id="footerStatus">System ready — awaiting payload</span>
+    <span>AirIQ · Chennai · IoT + ML v2 · <span id="footerTime">—</span></span>
+  </footer>
+
+</div>
+
+  <!-- ═══ MODAL ═══ -->
+  <div class="modal-overlay" id="hwModal">
+    <div class="modal-box">
+      <div class="modal-head">
+        <div class="modal-title">Hardware Setup</div>
+        <button class="modal-close" id="hwClose">&times;</button>
+      </div>
+      
+      <div class="modal-tab-bar">
+        <button class="modal-tab active" data-target="pane-serial">Serial Port</button>
+        <button class="modal-tab" data-target="pane-manual">Manual Input</button>
+      </div>
+      
+      <!-- SERIAL PANE -->
+      <div id="pane-serial" class="modal-pane active">
+        <div class="form-group">
+          <label class="form-label">Available COM Ports</label>
+          <select class="form-control" id="portSelect">
+            <option value="">Detecting...</option>
+          </select>
+        </div>
+        <button class="btn-primary" id="btnConnect">Connect to Hardware</button>
+        <button class="btn-outline" id="btnDisconnect" style="display:none">Disconnect</button>
+        <div id="serialMsg" style="margin-top:10px; font-size:11px; color:var(--amber)"></div>
+      </div>
+      
+      <!-- MANUAL PANE -->
+      <div id="pane-manual" class="modal-pane">
+        <div class="form-group">
+          <label class="form-label">MQ-135 (0-1023)</label>
+          <input type="number" class="form-control" id="man135" placeholder="e.g. 240">
+        </div>
+        <div class="form-group">
+          <label class="form-label">MQ-137 (0-1023)</label>
+          <input type="number" class="form-control" id="man137" placeholder="e.g. 85">
+        </div>
+        <button class="btn-primary" id="btnInject">Inject Reading</button>
+        <div id="manMsg" style="margin-top:10px; font-size:11px; color:var(--green)"></div>
+      </div>
+      
+    </div>
+  </div>
+
+<script>
+/* ─────────────────────────────────────
+   MAP INIT (Leaflet — no API key)
+───────────────────────────────────── */
+const ORIGIN = [12.8432, 80.1546];
+
+const map = L.map('map', {
+  center: ORIGIN, zoom: 13,
+  zoomControl: false, attributionControl: false
+});
+
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  subdomains: 'abcd', maxZoom: 20
+}).addTo(map);
+
+// Origin marker
+const originIcon = L.divIcon({
+  className: '',
+  html: `<div style="width:14px;height:14px;border-radius:50%;background:rgba(57,208,216,.3);border:2px solid #39d0d8;box-shadow:0 0 12px #39d0d8,0 0 24px rgba(57,208,216,.3)"></div>`,
+  iconSize: [14,14], iconAnchor: [7,7]
+});
+L.marker(ORIGIN, { icon: originIcon, zIndexOffset: 9999 })
+  .bindPopup(`<div><div class="pop-aqi" style="color:#39d0d8">BASE</div><div class="pop-cat" style="color:#39d0d8">Sensor Station · Chennai</div><div class="pop-row">Lat<span>12.97160</span></div><div class="pop-row">Lon<span>80.22090</span></div></div>`)
+  .addTo(map);
+
+let heatLayer = null, mapMarkers = [], showHeat = true, showPins = true;
+
+function buildHeat(pts) {
+  if (heatLayer) { map.removeLayer(heatLayer); heatLayer = null; }
+  if (!pts.length || !showHeat) return;
+  const data = pts.map(p => [p.lat, p.lng, Math.min(1, p.aqi/300)]);
+  heatLayer = L.heatLayer(data, {
+    radius: 65, blur: 50, maxZoom: 18, max: 1,
+    gradient: { 0:'#3fb950', 0.2:'#e6a817', 0.45:'#f0883e', 0.65:'#f85149', 0.85:'#bc8cff', 1:'#8957e5' }
+  }).addTo(map);
+}
+
+function buildPins(pts) {
+  mapMarkers.forEach(m => map.removeLayer(m));
+  mapMarkers = [];
+  if (!pts.length || !showPins) return;
+  pts.forEach(p => {
+    const c = aqiCol(p.aqi), hot = p.aqi > 200;
+    const icon = L.divIcon({
+      className: '',
+      html: `<div style="width:${hot?13:8}px;height:${hot?13:8}px;border-radius:50%;background:${c};border:${hot?'1.5px solid rgba(255,255,255,.5)':'none'};box-shadow:0 0 ${hot?9:5}px ${c}"></div>`,
+      iconSize: [hot?13:8, hot?13:8], iconAnchor: [hot?6.5:4, hot?6.5:4]
+    });
+    mapMarkers.push(
+      L.marker([p.lat, p.lng], {icon})
+        .bindPopup(`<div><div class="pop-aqi" style="color:${c}">${p.aqi}</div><div class="pop-cat" style="color:${c}">${aqiName(p.aqi)}</div><div class="pop-row">Lat<span>${p.lat.toFixed(5)}</span></div><div class="pop-row">Lon<span>${p.lng.toFixed(5)}</span></div></div>`)
+        .addTo(map)
+    );
+  });
+}
+
+document.getElementById('btnHeat').onclick = () => {
+  showHeat = !showHeat;
+  document.getElementById('btnHeat').classList.toggle('active', showHeat);
+  if (showHeat && heatLayer) heatLayer.addTo(map);
+  else if (heatLayer) map.removeLayer(heatLayer);
+};
+document.getElementById('btnPins').onclick = () => {
+  showPins = !showPins;
+  document.getElementById('btnPins').classList.toggle('active', showPins);
+  mapMarkers.forEach(m => showPins ? m.addTo(map) : map.removeLayer(m));
+};
+
+/* ─────────────────────────────────────
+   AQI HELPERS
+───────────────────────────────────── */
+function aqiCol(a) {
+  if (a <= 50)  return '#3fb950';
+  if (a <= 100) return '#e6a817';
+  if (a <= 150) return '#f0883e';
+  if (a <= 200) return '#f85149';
+  if (a <= 300) return '#bc8cff';
+  return '#8957e5';
+}
+function aqiName(a) {
+  if (a <= 50)  return 'Good';
+  if (a <= 100) return 'Moderate';
+  if (a <= 150) return 'Unhealthy for Sensitive';
+  if (a <= 200) return 'Unhealthy';
+  if (a <= 300) return 'Very Unhealthy';
+  return 'Hazardous';
+}
+function aqiPm25(a) {
+  if (a <= 50)  return (a/50*12).toFixed(1);
+  if (a <= 100) return (12+(a-50)/50*23.4).toFixed(1);
+  if (a <= 150) return (35.4+(a-100)/50*20.3).toFixed(1);
+  return (55.7+(a-150)/50*89.4).toFixed(1);
+}
+
+/* ─────────────────────────────────────
+   GAUGE
+───────────────────────────────────── */
+function setGauge(aqi) {
+  const circ = 452;
+  const frac = Math.min(aqi / 400, 1);
+  document.getElementById('aqiArc').setAttribute('stroke-dasharray', `${(frac*circ).toFixed(1)} ${circ}`);
+  document.getElementById('aqiNum').textContent = aqi;
+  document.getElementById('aqiCat').textContent = aqiName(aqi);
+  document.getElementById('aqiCat').style.color = aqiCol(aqi);
+  document.getElementById('pm25').textContent = aqiPm25(aqi);
+  document.getElementById('aqiStatus').textContent = aqiName(aqi);
+}
+
+/* ─────────────────────────────────────
+   CHART
+───────────────────────────────────── */
+let chart = null, curHours = 1;
+
+function initChart() {
+  const ctx = document.getElementById('trendChart').getContext('2d');
+  const grad = ctx.createLinearGradient(0,0,0,130);
+  grad.addColorStop(0, 'rgba(57,208,216,.25)');
+  grad.addColorStop(1, 'rgba(57,208,216,0)');
+  chart = new Chart(ctx, {
+    type: 'line',
+    data: { labels: [], datasets: [{
+      data: [], borderColor: '#39d0d8', borderWidth: 1.5,
+      pointRadius: 0, pointHoverRadius: 4,
+      fill: true, backgroundColor: grad, tension: 0.4
+    }]},
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      animation: { duration: 350 },
+      plugins: { legend: { display: false }, tooltip: {
+        backgroundColor: 'rgba(13,17,23,.97)',
+        borderColor: 'rgba(57,208,216,.25)', borderWidth: 1,
+        titleColor: '#6e7681', bodyColor: '#39d0d8',
+        bodyFont: { family: "'DM Mono', monospace", size: 13, weight: '500' },
+        padding: 10, cornerRadius: 7, displayColors: false,
+        callbacks: { label: ctx => 'AQI ' + Math.round(ctx.raw) }
+      }},
+      scales: {
+        x: { grid: { color: 'rgba(255,255,255,.04)' }, ticks: { color: '#6e7681', font: { family: "'DM Mono',monospace", size: 10 }, maxTicksLimit: 5, maxRotation: 0 }, border: { display: false } },
+        y: { min: 0, suggestedMax: 150, grid: { color: 'rgba(255,255,255,.04)' }, ticks: { color: '#6e7681', font: { family: "'DM Mono',monospace", size: 10 }, maxTicksLimit: 4 }, border: { display: false } }
+      }
+    }
+  });
+  simulateChart(1);
+}
+
+function simulateChart(hours) {
+  const now = Date.now(), pts = Math.min(60, hours*12);
+  const labels = [], data = [];
+  for (let i = pts; i >= 0; i--) {
+    const t = new Date(now - i*(hours*3600000/pts));
+    labels.push(t.getHours().toString().padStart(2,'0')+':'+t.getMinutes().toString().padStart(2,'0'));
+    data.push(Math.round(65 + Math.sin(i*0.28)*28 + Math.random()*20));
+  }
+  if (chart) { chart.data.labels = labels; chart.data.datasets[0].data = data; chart.update('none'); }
+}
+
+function pushLive(aqi) {
+  if (!chart) return;
+  const t = new Date();
+  const lbl = t.getHours().toString().padStart(2,'0')+':'+t.getMinutes().toString().padStart(2,'0');
+  chart.data.labels.push(lbl); chart.data.datasets[0].data.push(Math.round(aqi));
+  if (chart.data.labels.length > 60) { chart.data.labels.shift(); chart.data.datasets[0].data.shift(); }
+  chart.update('none');
+}
+
+document.querySelectorAll('.tbtn').forEach(b => {
+  b.onclick = () => {
+    document.querySelectorAll('.tbtn').forEach(x => x.classList.remove('active'));
+    b.classList.add('active'); curHours = parseInt(b.dataset.h);
+    fetchChart(curHours);
+  };
+});
+
+function fetchChart(h) {
+  fetch(`/api/history?hours=${h}&limit=300`)
+    .then(r => r.json())
+    .then(d => {
+      if (d.time_series?.length) {
+        const labels = d.time_series.map(p => { const t = new Date(p.timestamp*1000); return t.getHours().toString().padStart(2,'0')+':'+t.getMinutes().toString().padStart(2,'0'); });
+        if (chart) { chart.data.labels = labels; chart.data.datasets[0].data = d.time_series.map(p => p.avg_aqi); chart.update('none'); }
+      } else simulateChart(h);
+    }).catch(() => simulateChart(h));
+}
+
+/* ─────────────────────────────────────
+   HEALTH
+───────────────────────────────────── */
+const HEALTH = {
+  good: ['No restrictions — ideal conditions for outdoor activity.', 'Air quality is satisfactory for all groups.'],
+  moderate: ['Sensitive individuals may want to limit prolonged outdoor exposure.', 'Air quality is acceptable for most people.'],
+  sensitive: ['Reduce outdoor activity if you have respiratory conditions.', 'Children and elderly: limit extended exertion.', 'Consider wearing a mask outdoors.'],
+  unhealthy: ['Everyone should reduce outdoor exertion.', 'Sensitive groups: stay indoors where possible.', 'Monitor for symptoms like coughing or shortness of breath.'],
+  very: ['Health alert — avoid outdoor activities.', 'Use indoor air purification if available.', 'Wear N95 if going outside is necessary.'],
+  hazardous: ['⚠ Stay indoors — hazardous air quality.', 'Seal windows and doors to limit exposure.', 'Seek medical attention if experiencing symptoms.']
+};
+
+function setHealth(aqi) {
+  const key = aqi <= 50 ? 'good' : aqi <= 100 ? 'moderate' : aqi <= 150 ? 'sensitive' : aqi <= 200 ? 'unhealthy' : aqi <= 300 ? 'very' : 'hazardous';
+  const cls = aqi > 200 ? 'alert' : aqi > 100 ? 'warn' : '';
+  document.getElementById('healthList').innerHTML = HEALTH[key].map(r => `<div class="health-item ${cls}">${r}</div>`).join('');
+}
+
+/* ─────────────────────────────────────
+   FEED
+───────────────────────────────────── */
+let alertCount = 0;
+document.querySelectorAll('.ftab').forEach(t => {
+  t.onclick = () => {
+    document.querySelectorAll('.ftab').forEach(x => x.classList.remove('active'));
+    document.querySelectorAll('.feed-pane').forEach(x => x.classList.remove('show'));
+    t.classList.add('active');
+    document.getElementById('pane-'+t.dataset.tab).classList.add('show');
+  };
+});
+
+function addAlert(msg, sev='medium') {
+  const p = document.getElementById('pane-alerts');
+  p.querySelector('.feed-empty')?.remove();
+  const cls = sev === 'high' ? 'd' : sev === 'low' ? 'ok' : 'a';
+  const ico = sev === 'high' ? '🔴' : sev === 'low' ? '🟢' : '🟡';
+  const el = document.createElement('div');
+  el.className = 'feed-item ' + cls;
+  el.innerHTML = `<span class="fi-ico">${ico}</span><div><div class="fi-msg">${msg}</div><div class="fi-time">${new Date().toLocaleTimeString('en-IN')}</div></div>`;
+  p.insertBefore(el, p.firstChild);
+  while (p.children.length > 10) p.removeChild(p.lastChild);
+  alertCount++; document.getElementById('alertBadge').textContent = alertCount;
+}
+
+function addInsight(msg) {
+  const p = document.getElementById('pane-insights');
+  p.querySelector('.feed-empty')?.remove();
+  const el = document.createElement('div');
+  el.className = 'feed-item i';
+  el.innerHTML = `<span class="fi-ico">💡</span><div><div class="fi-msg">${msg}</div><div class="fi-time">${new Date().toLocaleTimeString('en-IN')}</div></div>`;
+  p.insertBefore(el, p.firstChild);
+  while (p.children.length > 10) p.removeChild(p.lastChild);
+}
+
+/* ─────────────────────────────────────
+   WEBSOCKET
+───────────────────────────────────── */
+function initSocket() {
+  const sock = io({ transports: ['websocket','polling'], reconnectionDelay: 1000, reconnectionDelayMax: 10000 });
+  sock.on('connect', () => {
+    // Keep it dead until data arrives or we explicitly connect hardware
+    // document.getElementById('connDot').className = 'conn-dot live';
+    // document.getElementById('connText').textContent = 'Live · Chennai';
+    sock.emit('request_update');
+  });
+  sock.on('disconnect', () => {
+    document.getElementById('connDot').className = 'conn-dot dead';
+    document.getElementById('connText').textContent = 'Disconnected';
+  });
+  sock.on('data_update', ({reading, aqi, alerts}) => {
+    if (!reading || !aqi) return;
+    const ts = new Date().toLocaleTimeString('en-IN', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+    document.getElementById('footerStatus').textContent = `Last update: ${ts} · MQ135=${Math.round(reading.mq135)} MQ137=${Math.round(reading.mq137)}`;
+    document.getElementById('mq135').textContent = Math.round(reading.mq135);
+    document.getElementById('mq137').textContent = Math.round(reading.mq137);
+    if (reading.latitude)  document.getElementById('tlat').textContent = parseFloat(reading.latitude).toFixed(5);
+    if (reading.longitude) document.getElementById('tlon').textContent = parseFloat(reading.longitude).toFixed(5);
+    if (aqi.aqi != null) { setGauge(aqi.aqi); setHealth(aqi.aqi); pushLive(aqi.aqi); }
+    if (reading.latitude && reading.longitude) {
+      const pt = { lat: reading.latitude, lng: reading.longitude, aqi: aqi.aqi };
+      buildHeat([pt]); buildPins([pt]);
+      document.getElementById('mapStatus').textContent = `${pt.aqi} AQI · ${reading.latitude.toFixed(4)}°N ${reading.longitude.toFixed(4)}°E`;
+    }
+    
+    // We received data! Set live
+    document.getElementById('connDot').className = 'conn-dot live';
+    document.getElementById('connText').textContent = 'Live · VIT Chennai';
+    if (alerts?.length) alerts.forEach(a => addAlert(a.message, a.severity));
+  });
+}
+
+/* ─────────────────────────────────────
+   API POLL
+───────────────────────────────────── */
+function syncAPI() {
+  fetch('/api/current').then(r=>r.json()).then(d => {
+    if (d.aqi && !d.no_data) { setGauge(d.aqi); setHealth(d.aqi); }
+    if (d.mq135 != null) {
+      document.getElementById('mq135').textContent = Math.round(d.mq135);
+      document.getElementById('mq137').textContent = Math.round(d.mq137);
+    }
+  }).catch(()=>{});
+
+  fetch('/api/heatmap?hours=2').then(r=>r.json()).then(d => {
+    if (d.heatmap?.length) {
+      const pts = d.heatmap.map(h => ({ lat: h.latitude, lng: h.longitude, aqi: h.aqi }));
+      buildHeat(pts); buildPins(pts);
+      document.getElementById('mapStatus').textContent = `${pts.length} readings · last 2h`;
+    }
+  }).catch(()=>{});
+
+  fetch('/api/alerts?hours=1&limit=5').then(r=>r.json()).then(d => {
+    if (d.alerts?.length) d.alerts.forEach(a => addAlert(a.message, a.severity));
+  }).catch(()=>{});
+
+  fetch('/api/insights?hours=6&limit=4').then(r=>r.json()).then(d => {
+    if (d.insights?.length) d.insights.forEach(i => addInsight(i.message));
+  }).catch(()=>{});
+}
+
+/* ─────────────────────────────────────
+   CLOCK
+───────────────────────────────────── */
+function updateClock() {
+  document.getElementById('footerTime').textContent = new Date().toLocaleTimeString('en-IN', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+}
+
+/* ─────────────────────────────────────
+   HARDWARE SETUP LOGIC
+───────────────────────────────────── */
+const hwModal = document.getElementById('hwModal');
+document.getElementById('connPill').onclick = () => { hwModal.classList.add('show'); loadPorts(); };
+document.getElementById('hwClose').onclick = () => hwModal.classList.remove('show');
+
+document.querySelectorAll('.modal-tab').forEach(btn => {
+    btn.onclick = () => {
+        document.querySelectorAll('.modal-tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.modal-pane').forEach(p => p.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById(btn.dataset.target).classList.add('active');
+    };
+});
+
+function loadPorts() {
+    fetch('/api/serial/ports').then(r => r.json()).then(data => {
+        const sel = document.getElementById('portSelect');
+        sel.innerHTML = '';
+        if(data.ports && data.ports.length > 0) {
+            data.ports.forEach(p => {
+                sel.innerHTML += `<option value="${p.device}">${p.device} - ${p.description}</option>`;
+            });
+        } else {
+            sel.innerHTML = '<option value="">No COM ports found</option>';
+        }
+    }).catch(e => console.error(e));
+}
+
+document.getElementById('btnConnect').onclick = () => {
+    const port = document.getElementById('portSelect').value;
+    const msg = document.getElementById('serialMsg');
+    if(!port) { msg.textContent = 'Please select a port'; return; }
+    msg.textContent = 'Connecting...';
+    fetch('/api/serial/connect', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({port: port, baudrate: 115200})
+    }).then(r => r.json()).then(d => {
+        if(d.success) {
+            msg.style.color = 'var(--green)'; msg.textContent = 'Connected!';
+            document.getElementById('btnConnect').style.display = 'none';
+            document.getElementById('btnDisconnect').style.display = 'block';
+            setTimeout(() => hwModal.classList.remove('show'), 1000);
+        } else {
+            msg.style.color = 'var(--red)'; msg.textContent = d.error || 'Failed to connect';
+        }
+    }).catch(e => { msg.style.color='var(--red)'; msg.textContent=e; });
+};
+
+document.getElementById('btnDisconnect').onclick = () => {
+     fetch('/api/serial/disconnect', {method: 'POST'})
+       .then(() => {
+           document.getElementById('btnConnect').style.display = 'block';
+           document.getElementById('btnDisconnect').style.display = 'none';
+           document.getElementById('serialMsg').style.color = 'var(--amber)';
+           document.getElementById('serialMsg').textContent = 'Disconnected';
+           document.getElementById('connDot').className = 'conn-dot dead';
+           document.getElementById('connText').textContent = 'Disconnected';
+       });
+};
+
+document.getElementById('btnInject').onclick = () => {
+     const mq135 = document.getElementById('man135').value;
+     const mq137 = document.getElementById('man137').value;
+     const msg = document.getElementById('manMsg');
+     if(!mq135 || !mq137) { msg.style.color='var(--amber)'; msg.textContent='Enter both values'; return; }
+     
+     fetch('/api/manual-reading', {
+         method: 'POST', headers: {'Content-Type': 'application/json'},
+         body: JSON.stringify({mq135: parseFloat(mq135), mq137: parseFloat(mq137)})
+     }).then(r => r.json()).then(d => {
+         if(d.success) {
+             msg.style.color='var(--green)'; msg.textContent='Injected reading into model execution pipeline';
+             setTimeout(() => hwModal.classList.remove('show'), 1000);
+         } else {
+             msg.style.color='var(--red)'; msg.textContent=d.error;
+         }
+     });
+};
+
+/* ─────────────────────────────────────
+   BOOT
+───────────────────────────────────── */
+document.addEventListener('DOMContentLoaded', () => {
+  initChart();
+  setTimeout(initSocket, 400);
+  syncAPI();
+  setInterval(syncAPI, 8000);
+  setInterval(updateClock, 1000);
+  setTimeout(() => addInsight('System initialised — monitoring Chennai air quality via IoT hardware.'), 1800);
+
+  // Invalidate map size after fonts/layout settle
+  setTimeout(() => map.invalidateSize(), 300);
+  setTimeout(() => map.invalidateSize(), 800);
+});
+</script>
+</body>
+</html>

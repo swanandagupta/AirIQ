@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>AirIQ — Geospatial Intelligence · Chennai</title>
+<meta name="description" content="AirIQ geospatial AQI heatmap for Chennai, Tamil Nadu. Real-time air quality intelligence.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ══════════════════════════════════════════
+   TOKENS
+══════════════════════════════════════════ */
+:root{
+  --bg:#04060f;
+  --surface:rgba(8,14,32,0.82);
+  --surface2:rgba(10,18,40,0.68);
+  --border:rgba(56,189,248,0.13);
+  --border-hi:rgba(56,189,248,0.42);
+  --accent:#38bdf8;
+  --accent2:#818cf8;
+  --accent3:#34d399;
+  --warn:#fb923c;
+  --danger:#f87171;
+  --purple:#c084fc;
+  --text:#e2e8f0;
+  --dim:#64748b;
+  --r:14px;
+  --rs:8px;
+  --font:'Inter',sans-serif;
+  --mono:'JetBrains Mono',monospace;
+  --ease:cubic-bezier(.4,0,.2,1);
+  --shadow:0 8px 40px rgba(0,0,0,.6),0 0 0 1px rgba(56,189,248,.04);
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+.leaflet-container{background:#050810!important}
+.leaflet-control-zoom,.leaflet-control-attribution{display:none!important}
+.leaflet-popup-content-wrapper{background:rgba(8,14,32,.95)!important;backdrop-filter:blur(16px);border:1px solid var(--border-hi)!important;border-radius:12px!important;color:var(--text)!important;box-shadow:0 8px 32px rgba(0,0,0,.6)!important;padding:0!important}
+.leaflet-popup-content{margin:0!important;padding:14px!important}
+.leaflet-popup-tip-container{display:none}
+
+/* ── MAP ── */
+#map{position:fixed;inset:0;z-index:0}
+
+/* ── GLASS PANEL ── */
+.panel{
+  background:var(--surface);
+  backdrop-filter:blur(24px);
+  -webkit-backdrop-filter:blur(24px);
+  border:1px solid var(--border);
+  border-radius:var(--r);
+  padding:16px;
+  box-shadow:var(--shadow);
+  transition:border-color .3s var(--ease);
+}
+.panel:hover{border-color:var(--border-hi)}
+.ptitle{
+  font-size:9px;font-weight:700;letter-spacing:2.8px;text-transform:uppercase;
+  color:var(--accent);margin-bottom:14px;display:flex;align-items:center;gap:8px;
+}
+.ptitle::before{content:'';width:10px;height:2px;background:var(--accent);border-radius:1px;flex-shrink:0}
+
+/* ── HEADER BAR ── */
+#hdr{
+  position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:800;
+  display:flex;align-items:center;gap:12px;
+  background:var(--surface);backdrop-filter:blur(28px);-webkit-backdrop-filter:blur(28px);
+  border:1px solid var(--border);border-radius:40px;
+  padding:9px 22px;
+  box-shadow:0 4px 30px rgba(0,0,0,.5),0 0 0 1px rgba(56,189,248,.06);
+  max-width:calc(100vw - 28px);flex-wrap:wrap;gap:8px;
+}
+.logo-dot{width:9px;height:9px;border-radius:50%;background:var(--accent);box-shadow:0 0 10px var(--accent);animation:pdot 2s infinite;flex-shrink:0}
+@keyframes pdot{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.7);opacity:.5}}
+.logo-txt{font-size:14px;font-weight:700;background:linear-gradient(90deg,var(--accent),var(--accent2));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;white-space:nowrap}
+.hdr-sep{width:1px;height:18px;background:var(--border);flex-shrink:0}
+.hdr-stat{font-size:11px;font-family:var(--mono);color:var(--dim);display:flex;align-items:center;gap:5px;white-space:nowrap}
+.hdr-stat b{color:var(--text);font-weight:500}
+.back-link{font-size:11px;color:var(--accent);text-decoration:none;padding:3px 10px;border:1px solid var(--border);border-radius:20px;transition:all .2s;white-space:nowrap}
+.back-link:hover{background:rgba(56,189,248,.12);border-color:var(--accent)}
+
+/* ── LEFT PANEL ── */
+#left-panel{
+  position:fixed;left:14px;top:50%;transform:translateY(-50%);
+  z-index:700;width:252px;display:flex;flex-direction:column;gap:10px;
+  max-height:calc(100vh - 120px);overflow-y:auto;scrollbar-width:thin;scrollbar-color:rgba(56,189,248,.3) transparent;
+}
+#left-panel::-webkit-scrollbar{width:3px}
+#left-panel::-webkit-scrollbar-thumb{background:rgba(56,189,248,.3);border-radius:2px}
+
+/* Layer toggles */
+.layer-row{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:8px 10px;background:rgba(255,255,255,.025);border-radius:var(--rs);
+  border:1px solid rgba(255,255,255,.04);cursor:pointer;transition:background .2s;
+}
+.layer-row:hover{background:rgba(56,189,248,.07)}
+.layer-label{font-size:12px;font-weight:500;display:flex;align-items:center;gap:7px}
+.ldot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+
+/* Toggle switch */
+.tog{position:relative;width:34px;height:18px;flex-shrink:0;cursor:pointer}
+.tog input{opacity:0;width:0;height:0;position:absolute}
+.tog-track{position:absolute;inset:0;border-radius:9px;background:rgba(255,255,255,.12);transition:background .3s}
+.tog-thumb{position:absolute;top:3px;left:3px;width:12px;height:12px;border-radius:50%;background:var(--dim);transition:all .3s}
+.tog input:checked+.tog-track{background:rgba(56,189,248,.45)}
+.tog input:checked+.tog-track+.tog-thumb{transform:translateX(16px);background:var(--accent);box-shadow:0 0 7px var(--accent)}
+
+/* Sliders */
+.sl-wrap{margin-top:4px}
+.sl-row{display:flex;justify-content:space-between;font-size:11px;color:var(--dim);margin-bottom:7px}
+.sl-row span{color:var(--accent);font-family:var(--mono)}
+input[type=range]{width:100%;-webkit-appearance:none;appearance:none;height:3px;border-radius:2px;background:rgba(255,255,255,.1);outline:none;cursor:pointer}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:var(--accent);box-shadow:0 0 7px var(--accent);cursor:pointer}
+
+/* Stats grid */
+.stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.stat-box{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.05);border-radius:var(--rs);padding:10px;display:flex;flex-direction:column;gap:3px}
+.stat-lbl{font-size:9px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--dim)}
+.stat-val{font-family:var(--mono);font-size:20px;font-weight:500}
+.stat-unit{font-size:9px;color:#475569}
+
+/* ── RIGHT TOP: STATUS ── */
+#status-panel{position:fixed;right:14px;top:80px;z-index:700;width:228px}
+.status-row{display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:var(--r);margin-bottom:10px}
+.sled{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+.sled.scan{background:var(--accent);box-shadow:0 0 9px var(--accent);animation:pdot 1.5s infinite}
+.sled.ok{background:var(--accent3);box-shadow:0 0 9px var(--accent3)}
+.sled.warn{background:var(--warn);box-shadow:0 0 9px var(--warn);animation:pdot .9s infinite}
+.stitle{font-size:13px;font-weight:600}
+.ssub{font-size:10px;color:var(--dim);font-family:var(--mono)}
+
+/* ── RIGHT MIDDLE: ANALYTICS ── */
+#analytics-panel{position:fixed;right:14px;top:172px;z-index:700;width:252px}
+#ana-chart{width:100%;height:80px;display:block;border-radius:6px}
+.mini-stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:10px}
+.mini-box{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.05);border-radius:6px;padding:8px;text-align:center}
+.mini-lbl{font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:1px}
+.mini-val{font-family:var(--mono);font-size:15px;margin-top:2px}
+
+/* ── LEGEND ── */
+#legend-panel{position:fixed;right:14px;bottom:90px;z-index:700;width:228px}
+.leg-bar{height:7px;border-radius:4px;background:linear-gradient(to right,#10b981,#f59e0b,#f97316,#ef4444,#a855f7,#7c2d12);margin:9px 0;box-shadow:0 0 10px rgba(56,189,248,.15)}
+.leg-labels{display:flex;justify-content:space-between;font-size:10px;font-family:var(--mono);color:var(--dim)}
+
+/* ── TIMELINE ── */
+#timeline-bar{
+  position:fixed;bottom:14px;left:50%;transform:translateX(-50%);
+  z-index:700;width:min(680px, calc(100vw - 290px));
+}
+.tl-inner{display:flex;align-items:center;gap:12px}
+.tl-btn{width:30px;height:30px;border-radius:50%;background:rgba(56,189,248,.12);border:1px solid rgba(56,189,248,.25);color:var(--accent);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s;flex-shrink:0}
+.tl-btn:hover{background:rgba(56,189,248,.25)}
+.tl-btn.active{background:rgba(56,189,248,.35);box-shadow:0 0 12px rgba(56,189,248,.4)}
+#tl-slider-wrap{flex:1;position:relative}
+#tl-slider{width:100%}
+#tl-label{font-size:10px;font-family:var(--mono);color:var(--accent);text-align:center;margin-top:5px}
+.tl-marks{display:flex;justify-content:space-between;font-size:9px;color:var(--dim);margin-top:3px;font-family:var(--mono)}
+
+/* ── MISSION LOG ── */
+#mission-log{position:fixed;left:14px;bottom:14px;z-index:700;width:252px}
+.log-list{max-height:110px;overflow-y:auto;display:flex;flex-direction:column;gap:4px}
+.log-list::-webkit-scrollbar{width:2px}
+.log-list::-webkit-scrollbar-thumb{background:rgba(56,189,248,.3);border-radius:1px}
+.log-entry{display:flex;gap:8px;align-items:flex-start;padding:6px 8px;background:rgba(255,255,255,.02);border-radius:6px;border-left:2px solid var(--accent);animation:fadeUp .35s var(--ease);font-size:11px}
+@keyframes fadeUp{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+.log-time{font-family:var(--mono);color:var(--dim);flex-shrink:0;font-size:10px;margin-top:1px}
+.log-msg{color:var(--text);line-height:1.45}
+.log-entry.warn{border-left-color:var(--warn)}
+.log-entry.danger{border-left-color:var(--danger)}
+.log-entry.ok{border-left-color:var(--accent3)}
+
+/* ── ZOOM ── */
+#zoom-btns{position:fixed;right:14px;bottom:190px;z-index:700;display:flex;flex-direction:column;gap:4px}
+.zbtn{width:34px;height:34px;border-radius:var(--rs);background:var(--surface2);backdrop-filter:blur(12px);border:1px solid var(--border);color:var(--text);font-size:18px;font-weight:300;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s}
+.zbtn:hover{background:rgba(56,189,248,.15);border-color:var(--accent);color:var(--accent)}
+
+/* ── COORD BAR ── */
+#coord-bar{position:fixed;bottom:14px;right:14px;z-index:700}
+#coord-bar .panel{border-radius:30px;padding:7px 16px;display:flex;gap:16px}
+.cd-item{display:flex;align-items:center;gap:5px;font-family:var(--mono);font-size:11px}
+.cd-lbl{color:var(--dim);font-size:9px}
+.cd-val{color:var(--accent)}
+
+/* Google Maps overrides */
+.gm-style .gm-style-iw-c{background:rgba(8,14,32,.96)!important;backdrop-filter:blur(16px);border:1px solid var(--border-hi)!important;border-radius:12px!important;color:var(--text)!important;box-shadow:0 8px 32px rgba(0,0,0,.6)!important;padding:14px!important}
+.gm-style .gm-style-iw-d{overflow:auto!important}
+.gm-style .gm-style-iw-t::after{background:rgba(8,14,32,.96)!important}
+.pop-val{font-family:var(--mono);font-size:26px;font-weight:700;line-height:1}
+.pop-cat{font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px}
+.pop-row{display:flex;justify-content:space-between;font-size:11px;color:var(--dim);border-top:1px solid rgba(255,255,255,.06);padding-top:6px;margin-top:6px}
+.pop-row span{color:var(--text);font-family:var(--mono)}
+
+/* ── RESPONSIVE ── */
+@media(max-width:900px){
+  #left-panel{width:200px}
+  #analytics-panel,#status-panel{width:200px}
+  #legend-panel{width:200px}
+  #timeline-bar{width:calc(100vw - 50px);left:14px;transform:none}
+}
+@media(max-width:600px){
+  #hdr{top:8px;padding:8px 14px;font-size:10px}
+  #left-panel{display:none}
+  #status-panel,#analytics-panel,#legend-panel{display:none}
+  #zoom-btns{right:8px;bottom:150px}
+  #timeline-bar{bottom:8px;width:calc(100vw - 16px);left:8px;transform:none}
+  #mission-log{left:8px;bottom:120px;width:calc(100vw - 16px)}
+  #coord-bar{display:none}
+}
+</style>
+</head>
+<body>
+
+<!-- BASE MAP -->
+<div id="map"></div>
+
+<!-- HEADER -->
+<div id="hdr">
+  <div class="logo-dot"></div>
+  <div class="logo-txt">AIRIQ GEOSPATIAL</div>
+  <div class="hdr-sep"></div>
+  <div class="hdr-stat">CENTER <b id="h-center">12.8432°N 80.1546°E</b></div>
+  <div class="hdr-sep"></div>
+  <div class="hdr-stat">CURSOR <b id="h-cursor">— —</b></div>
+  <div class="hdr-sep"></div>
+  <div class="hdr-stat">ZOOM <b id="h-zoom">13</b></div>
+  <div class="hdr-sep"></div>
+  <div class="hdr-stat">TIME <b id="h-time">T+0h</b></div>
+  <div class="hdr-sep"></div>
+  <a href="/" class="back-link">← Dashboard</a>
+</div>
+
+<!-- LEFT PANEL -->
+<div id="left-panel">
+  <!-- Layers -->
+  <div class="panel">
+    <div class="ptitle">Layer Control</div>
+    <div style="display:flex;flex-direction:column;gap:6px">
+      <label class="layer-row">
+        <span class="layer-label"><span class="ldot" style="background:#38bdf8;box-shadow:0 0 6px #38bdf8"></span>Heatmap</span>
+        <label class="tog"><input type="checkbox" id="l-heatmap" checked onchange="toggleLayer('heatmap',this.checked)"><div class="tog-track"></div><div class="tog-thumb"></div></label>
+      </label>
+      <label class="layer-row">
+        <span class="layer-label"><span class="ldot" style="background:#818cf8;box-shadow:0 0 6px #818cf8"></span>Coverage Ring</span>
+        <label class="tog"><input type="checkbox" id="l-boundary" checked onchange="toggleLayer('boundary',this.checked)"><div class="tog-track"></div><div class="tog-thumb"></div></label>
+      </label>
+      <label class="layer-row">
+        <span class="layer-label"><span class="ldot" style="background:#facc15;box-shadow:0 0 6px #facc15"></span>Sensor Points</span>
+        <label class="tog"><input type="checkbox" id="l-markers" checked onchange="toggleLayer('markers',this.checked)"><div class="tog-track"></div><div class="tog-thumb"></div></label>
+      </label>
+      <label class="layer-row">
+        <span class="layer-label"><span class="ldot" style="background:#c084fc;box-shadow:0 0 6px #c084fc"></span>Analytics Panel</span>
+        <label class="tog"><input type="checkbox" id="l-analytics" checked onchange="toggleLayer('analytics',this.checked)"><div class="tog-track"></div><div class="tog-thumb"></div></label>
+      </label>
+    </div>
+  </div>
+
+  <!-- Settings -->
+  <div class="panel">
+    <div class="ptitle">Coverage Settings</div>
+    <div class="sl-wrap">
+      <div class="sl-row">Coverage Radius<span id="r-val">2.0 km</span></div>
+      <input type="range" id="r-slider" min="0.5" max="8" step="0.1" value="2.0" oninput="onRadius(this.value)">
+    </div>
+    <div class="sl-wrap" style="margin-top:12px">
+      <div class="sl-row">Heat Intensity<span id="i-val">0.70</span></div>
+      <input type="range" id="i-slider" min="0.1" max="1" step="0.05" value="0.7" oninput="onIntensity(this.value)">
+    </div>
+  </div>
+
+  <!-- Coverage Stats -->
+  <div class="panel">
+    <div class="ptitle">Coverage Stats</div>
+    <div class="stat-grid">
+      <div class="stat-box"><div class="stat-lbl">Area</div><div class="stat-val" id="s-area">—</div><div class="stat-unit">km²</div></div>
+      <div class="stat-box"><div class="stat-lbl">Points</div><div class="stat-val" id="s-pts">—</div><div class="stat-unit">reads</div></div>
+      <div class="stat-box"><div class="stat-lbl">Avg AQI</div><div class="stat-val" id="s-avg">—</div><div class="stat-unit">index</div></div>
+      <div class="stat-box"><div class="stat-lbl">Peak AQI</div><div class="stat-val" id="s-max">—</div><div class="stat-unit">index</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- STATUS -->
+<div id="status-panel">
+  <div class="status-row panel">
+    <div class="sled scan" id="sled"></div>
+    <div><div class="stitle" id="stitle">Scanning</div><div class="ssub" id="ssub">Live data stream</div></div>
+  </div>
+</div>
+
+<!-- ANALYTICS -->
+<div id="analytics-panel" class="panel">
+  <div class="ptitle">Live Analytics</div>
+  <canvas id="ana-chart"></canvas>
+  <div class="mini-stats">
+    <div class="mini-box"><div class="mini-lbl">Min</div><div class="mini-val" id="m-min" style="color:#3b82f6">—</div></div>
+    <div class="mini-box"><div class="mini-lbl">Avg</div><div class="mini-val" id="m-avg" style="color:#facc15">—</div></div>
+    <div class="mini-box"><div class="mini-lbl">Max</div><div class="mini-val" id="m-max" style="color:#f87171">—</div></div>
+  </div>
+</div>
+
+<!-- LEGEND -->
+<div id="legend-panel" class="panel">
+  <div class="ptitle">AQI Legend</div>
+  <div style="font-size:10px;color:var(--dim)">Pollution Intensity Index</div>
+  <div class="leg-bar"></div>
+  <div class="leg-labels"><span>Good</span><span>Moderate</span><span>Hazardous</span></div>
+</div>
+
+<!-- ZOOM -->
+<div id="zoom-btns">
+  <button class="zbtn" id="zoomIn" title="Zoom in">+</button>
+  <button class="zbtn" id="zoomOut" title="Zoom out">−</button>
+</div>
+
+<!-- TIMELINE -->
+<div id="timeline-bar" class="panel" style="padding:14px 18px">
+  <div class="tl-inner">
+    <button class="tl-btn" id="play-btn" title="Play/Pause">▶</button>
+    <div id="tl-slider-wrap">
+      <input type="range" id="tl-slider" min="0" max="11" step="1" value="5" oninput="onTimeline(this.value)">
+      <div id="tl-label">Current — Real-time</div>
+      <div class="tl-marks">
+        <span>-12h</span><span>-9h</span><span>-6h</span><span>-3h</span><span>-1h</span><span>Now</span>
+        <span>+1h</span><span>+3h</span><span>+6h</span><span>+9h</span><span>+12h</span><span>+24h</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MISSION LOG -->
+<div id="mission-log" class="panel">
+  <div class="ptitle">Mission Log</div>
+  <div class="log-list" id="log-list"></div>
+</div>
+
+<!-- COORD BAR -->
+<div id="coord-bar">
+  <div class="panel">
+    <div class="cd-item"><span class="cd-lbl">LAT</span><span class="cd-val" id="cd-lat">12.84320</span></div>
+    <div class="cd-item"><span class="cd-lbl">LON</span><span class="cd-val" id="cd-lon">80.15460</span></div>
+    <div class="cd-item"><span class="cd-lbl">COV</span><span class="cd-val" id="cd-cov">—</span></div>
+  </div>
+</div>
+
+<!-- Leaflet JS + Heatmap plugin -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+
+<script>
+// ═══════════════════════════════
+// CONSTANTS — Chennai, Tamil Nadu
+// ═══════════════════════════════
+const LAT = 12.8432, LON = 80.1546;
+let radiusKm = 2.0, heatAmp = 0.7;
+let timeIndex = 5; // "Now" slot
+let isPlaying = false, playTimer = null;
+let MAP = null, markersList = [];
+let showHeatmap = true, showBoundary = true, showMarkers = true;
+const layers = { heatmap: true, boundary: true, markers: true, analytics: true };
+
+
+const ANA_LEN = 40;
+let anaHistory = new Array(ANA_LEN).fill(null);
+let anaPtr = 0;
+
+// ═══════════════════════════════
+// LEAFLET MAP INIT
+// ═══════════════════════════════
+let heatLyr = null, boundCircle = null, markerGrp = null;
+
+function initLeafletMap() {
+  MAP = L.map('map', {
+    center: [LAT, LON],
+    zoom: 13,
+    zoomControl: false,
+    attributionControl: false
+  });
+
+  // Dark CartoDB tile — no API key needed
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    subdomains: 'abcd', maxZoom: 20
+  }).addTo(MAP);
+
+  // Origin pin
+  const originIcon = L.divIcon({
+    className: '',
+    html: `<div style="width:14px;height:14px;border-radius:50%;background:rgba(56,189,248,0.3);border:2px solid #38bdf8;box-shadow:0 0 14px #38bdf8,0 0 28px rgba(56,189,248,0.4);"></div>`,
+    iconSize: [14,14], iconAnchor: [7,7]
+  });
+  L.marker([LAT, LON], { icon: originIcon, zIndexOffset: 9999 })
+    .bindPopup(`<div><div class="pop-val" style="color:#38bdf8">ORIGIN</div><div class="pop-cat" style="color:#38bdf8">Sensor Station · Chennai</div><div class="pop-row">Lat<span>${LAT}</span></div><div class="pop-row">Lon<span>${LON}</span></div></div>`)
+    .addTo(MAP);
+
+  MAP.on('mousemove', e => {
+    document.getElementById('h-cursor').textContent = e.latlng.lat.toFixed(5)+'°N '+e.latlng.lng.toFixed(5)+'°E';
+    document.getElementById('cd-lat').textContent = e.latlng.lat.toFixed(5);
+    document.getElementById('cd-lon').textContent = e.latlng.lng.toFixed(5);
+  });
+  MAP.on('zoom', () => { document.getElementById('h-zoom').textContent = MAP.getZoom(); });
+
+  document.getElementById('zoomIn').onclick  = () => MAP.setZoom(MAP.getZoom() + 1);
+  document.getElementById('zoomOut').onclick = () => MAP.setZoom(MAP.getZoom() - 1);
+
+  initData();
+}
+
+// ═══════════════════════════════
+// AQI HELPERS
+// ═══════════════════════════════
+function aqiColor(a) {
+  if (a <= 50)  return '#10b981';
+  if (a <= 100) return '#f59e0b';
+  if (a <= 150) return '#f97316';
+  if (a <= 200) return '#ef4444';
+  if (a <= 300) return '#a855f7';
+  return '#7c2d12';
+}
+function aqiCat(a) {
+  if (a <= 50)  return 'Good';
+  if (a <= 100) return 'Moderate';
+  if (a <= 150) return 'Sensitive';
+  if (a <= 200) return 'Unhealthy';
+  if (a <= 300) return 'Very Unhealthy';
+  return 'Hazardous';
+}
+
+let sensorData = [];
+
+// ═══════════════════════════════
+// BUILD MAP LAYERS
+// ═══════════════════════════════
+function buildHeat() {
+  if (heatLyr) { MAP.removeLayer(heatLyr); heatLyr = null; }
+  const pts = sensorData.map(d => [d.lat, d.lng, d.intensity * heatAmp]);
+  heatLyr = L.heatLayer(pts, {
+    radius: 65, blur: 50, maxZoom: 18, max: 1,
+    gradient: { 0:'#10b981', 0.2:'#f59e0b', 0.45:'#f97316', 0.65:'#ef4444', 0.85:'#a855f7', 1:'#7c2d12' }
+  });
+  if (layers.heatmap) heatLyr.addTo(MAP);
+}
+
+function buildBoundary() {
+  if (boundCircle) { MAP.removeLayer(boundCircle); boundCircle = null; }
+  boundCircle = L.circle([LAT, LON], {
+    radius: radiusKm * 1000,
+    color: '#38bdf8', weight: 1.5, dashArray: '5 4',
+    fillColor: 'transparent', fillOpacity: 0
+  });
+  if (layers.boundary) boundCircle.addTo(MAP);
+}
+
+function buildMarkers() {
+  markersList.forEach(m => MAP.removeLayer(m));
+  markersList = [];
+  if (!layers.markers) return;
+
+  sensorData.forEach(d => {
+    const c = aqiColor(d.aqi);
+    const hot = d.aqi > 200;
+    const icon = L.divIcon({
+      className: '',
+      html: `<div style="width:${hot?14:9}px;height:${hot?14:9}px;border-radius:50%;background:${c};opacity:0.92;border:${hot?'1.5px solid #fff':'0.8px solid rgba(255,255,255,.3)'};box-shadow:0 0 ${hot?10:5}px ${c};"></div>`,
+      iconSize: [hot?14:9, hot?14:9], iconAnchor: [hot?7:4.5, hot?7:4.5]
+    });
+    const m = L.marker([d.lat, d.lng], { icon })
+      .bindPopup(`<div><div class="pop-val" style="color:${c}">${d.aqi}</div><div class="pop-cat" style="color:${c}">${aqiCat(d.aqi)}</div><div class="pop-row">Latitude<span>${d.lat.toFixed(5)}</span></div><div class="pop-row">Longitude<span>${d.lng.toFixed(5)}</span></div><div class="pop-row">Intensity<span>${(d.intensity*100).toFixed(1)}%</span></div></div>`);
+    m.addTo(MAP);
+    markersList.push(m);
+  });
+}
+
+// ═══════════════════════════════
+// STATS UPDATE
+// ═══════════════════════════════
+function updateStats() {
+  const area = (Math.PI * radiusKm * radiusKm).toFixed(2);
+  const aqis = sensorData.map(d => d.aqi);
+  const avg = Math.round(aqis.reduce((a, b) => a + b, 0) / aqis.length);
+  const max = Math.max(...aqis);
+  const min = Math.min(...aqis);
+
+  document.getElementById('s-area').textContent = area;
+  document.getElementById('s-pts').textContent = sensorData.length;
+  document.getElementById('s-avg').textContent = avg;
+  document.getElementById('s-max').textContent = max;
+  document.getElementById('cd-cov').textContent = area + ' km²';
+  document.getElementById('m-min').textContent = min;
+  document.getElementById('m-avg').textContent = avg;
+  document.getElementById('m-max').textContent = max;
+
+  // Status LED
+  const led = document.getElementById('sled');
+  led.className = 'sled';
+  if (max > 250) {
+    led.classList.add('warn');
+    document.getElementById('stitle').textContent = 'High Activity';
+    document.getElementById('ssub').textContent = 'AQI ' + max + ' detected';
+  } else if (max > 120) {
+    led.classList.add('scan');
+    document.getElementById('stitle').textContent = 'Scanning';
+    document.getElementById('ssub').textContent = sensorData.length + ' points active';
+  } else {
+    led.classList.add('ok');
+    document.getElementById('stitle').textContent = 'Stable';
+    document.getElementById('ssub').textContent = 'Air quality nominal';
+  }
+
+  pushAnalytics(avg);
+  drawAnalytics();
+}
+
+// ═══════════════════════════════
+// ANALYTICS CHART
+// ═══════════════════════════════
+const anaC = document.getElementById('ana-chart');
+const anaCtx = anaC.getContext('2d');
+
+function pushAnalytics(avg) {
+  anaHistory[anaPtr % ANA_LEN] = avg;
+  anaPtr++;
+}
+
+function drawAnalytics() {
+  const W = anaC.parentElement.clientWidth - 32, H = 80;
+  anaC.width = W; anaC.height = H;
+  const vals = [];
+  for (let i = 0; i < ANA_LEN; i++) vals.push(anaHistory[(anaPtr - ANA_LEN + i + ANA_LEN) % ANA_LEN] || 0);
+  const maxV = Math.max(...vals, 1);
+  anaCtx.fillStyle = 'rgba(255,255,255,0.02)';
+  anaCtx.fillRect(0, 0, W, H);
+  [0.25, 0.5, 0.75].forEach(f => {
+    anaCtx.strokeStyle = 'rgba(255,255,255,0.05)';
+    anaCtx.lineWidth = 0.5;
+    anaCtx.beginPath(); anaCtx.moveTo(0, H * f); anaCtx.lineTo(W, H * f); anaCtx.stroke();
+  });
+  if (vals.some(v => v > 0)) {
+    const grad = anaCtx.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0, 'rgba(56,189,248,0.35)');
+    grad.addColorStop(1, 'rgba(56,189,248,0)');
+    anaCtx.fillStyle = grad;
+    anaCtx.beginPath();
+    vals.forEach((v, i) => {
+      const x = (i / (ANA_LEN - 1)) * W;
+      const y = H - (v / maxV) * (H - 8) - 4;
+      i === 0 ? anaCtx.moveTo(x, y) : anaCtx.lineTo(x, y);
+    });
+    anaCtx.lineTo(W, H); anaCtx.lineTo(0, H); anaCtx.closePath(); anaCtx.fill();
+    anaCtx.strokeStyle = 'rgba(56,189,248,0.85)';
+    anaCtx.lineWidth = 1.5; anaCtx.lineJoin = 'round';
+    anaCtx.beginPath();
+    vals.forEach((v, i) => {
+      if (!v) return;
+      const x = (i / (ANA_LEN - 1)) * W;
+      const y = H - (v / maxV) * (H - 8) - 4;
+      i === 0 || !vals[i - 1] ? anaCtx.moveTo(x, y) : anaCtx.lineTo(x, y);
+    });
+    anaCtx.stroke();
+  }
+}
+
+// ═══════════════════════════════
+// MISSION LOG
+// ═══════════════════════════════
+function addLog(msg, type = 'ok') {
+  const list = document.getElementById('log-list');
+  const now = new Date();
+  const ts = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0') + ':' + now.getSeconds().toString().padStart(2,'0');
+  const el = document.createElement('div');
+  el.className = 'log-entry ' + type;
+  el.innerHTML = `<span class="log-time">${ts}</span><span class="log-msg">${msg}</span>`;
+  list.insertBefore(el, list.firstChild);
+  while (list.children.length > 18) list.removeChild(list.lastChild);
+}
+
+// ═══════════════════════════════
+// TIMELINE
+// ═══════════════════════════════
+const TL_LABELS = ['-12h','-9h','-6h','-3h','-1h','Now','+1h','+3h','+6h','+9h','+12h','+24h'];
+const TL_OFFSET = [-12,-9,-6,-3,-1,0,1,3,6,9,12,24];
+
+function onTimeline(v) {
+  timeIndex = parseInt(v);
+  const offset = TL_OFFSET[timeIndex] || 0;
+  document.getElementById('tl-label').textContent =
+    timeIndex === 5 ? 'Current — Real-time' :
+    offset > 0 ? '⟶ Predicted: T+' + offset + 'h' : '⟵ Historical: T' + offset + 'h';
+  document.getElementById('h-time').textContent = 'T' + (offset >= 0 ? '+' : '') + offset + 'h';
+  
+  if (timeIndex === 5) {
+     fetchBackend();
+  } else {
+     // For time-travel we fetch history (stubbed for now - just hide sensors)
+     sensorData = [];
+     buildHeat(); buildMarkers(); updateStats();
+  }
+  
+  addLog('Timeline → ' + TL_LABELS[timeIndex]);
+}
+
+document.getElementById('play-btn').addEventListener('click', () => {
+  isPlaying = !isPlaying;
+  document.getElementById('play-btn').textContent = isPlaying ? '⏸' : '▶';
+  document.getElementById('play-btn').classList.toggle('active', isPlaying);
+  if (isPlaying) {
+    playTimer = setInterval(() => {
+      let v = parseInt(document.getElementById('tl-slider').value);
+      v = (v + 1) % 12;
+      document.getElementById('tl-slider').value = v;
+      onTimeline(v);
+    }, 1200);
+  } else clearInterval(playTimer);
+});
+
+// ═══════════════════════════════
+// LAYER TOGGLES
+// ═══════════════════════════════
+function toggleLayer(name, on) {
+  layers[name] = on;
+  if (name === 'heatmap')   { if (heatLyr)    { on ? heatLyr.addTo(MAP)    : MAP.removeLayer(heatLyr); } }
+  if (name === 'boundary')  { if (boundCircle) { on ? boundCircle.addTo(MAP) : MAP.removeLayer(boundCircle); } }
+  if (name === 'markers')   { buildMarkers(); }
+  if (name === 'analytics') { document.getElementById('analytics-panel').style.display = on ? 'block' : 'none'; }
+  addLog((on ? 'Layer on: ' : 'Layer off: ') + name);
+}
+
+// ═══════════════════════════════
+// CONTROLS
+// ═══════════════════════════════
+function onRadius(v) {
+  radiusKm = parseFloat(v);
+  document.getElementById('r-val').textContent = radiusKm.toFixed(1) + ' km';
+  buildHeat(); buildBoundary(); buildMarkers(); updateStats();
+}
+function onIntensity(v) {
+  heatAmp = parseFloat(v);
+  document.getElementById('i-val').textContent = heatAmp.toFixed(2);
+  buildHeat();
+}
+
+// ═══════════════════════════════
+// BACKEND SYNC
+// ═══════════════════════════════
+function fetchBackend() {
+  fetch('/api/heatmap?hours=24')
+    .then(r => r.json())
+    .then(data => {
+      if (data.heatmap && data.heatmap.length > 0) {
+        sensorData = data.heatmap.map(pt => ({
+          lat: pt.latitude, lng: pt.longitude,
+          aqi: pt.aqi, intensity: Math.min(1, pt.aqi / 300)
+        }));
+        buildHeat(); buildMarkers(); updateStats();
+        addLog('Live sync — ' + sensorData.length + ' readings', 'ok');
+      }
+    })
+    .catch(() => {
+      // If error, do not generate fake data, wait for next cycle
+    });
+}
+
+// ═══════════════════════════════
+// INIT
+// ═══════════════════════════════
+function initData() {
+  buildBoundary(); updateStats(); fetchBackend();
+
+  const startLogs = ['System online','Connecting to data stream',`GPS: VIT Chennai ${LAT}°N ${LON}°E`,'ML model loaded','Coverage boundary set','Ready'];
+  startLogs.forEach((m, i) => setTimeout(() => addLog(m, 'ok'), i * 280 + 150));
+
+  setInterval(fetchBackend, 5000);
+  setInterval(drawAnalytics, 500);
+  setInterval(() => {
+    const max = Math.max(...sensorData.map(d => d.aqi));
+    if (max > 300) addLog('⚠ Hazardous AQI detected!', 'danger');
+    else if (max > 150) addLog('Elevated readings detected', 'warn');
+    else addLog('Signal stable', 'ok');
+  }, 9000 + Math.random() * 5000);
+}
+
+// Smooth panel intro + start map
+document.querySelectorAll('.panel, #hdr, #coord-bar').forEach((el, i) => {
+  el.style.opacity = '0'; el.style.transform = 'translateY(8px)';
+  el.style.transition = 'opacity .55s ease, transform .55s ease';
+  setTimeout(() => { el.style.opacity = '1'; el.style.transform = 'none'; }, i * 55 + 200);
+});
+
+// Init Leaflet map (no API key needed)
+initLeafletMap();
+</script>
+</body>
+</html>

@@ -1,0 +1,31 @@
+Loading datasets...
+Sampling 100000 records for rapid training out of 1600000 total...
+Datasets loaded in 2.59 seconds.
+
+Training Random Forest model (Using multiple CPU cores)...
+Model successfully trained in 2.43 seconds.
+
+Running inference on Test Data...
+
+=============================================
+      MODEL PERFORMANCE ON TEST DATA         
+=============================================
+Total Test Records Evaluated: 20000
+Mean Squared Error (MSE):     2.1853
+R-Squared / Accuracy Score:   0.9997 (1.00 is perfect)
+=============================================
+
+Sample Predictions vs Actual:
+   Actual AQI  Predicted AQI
+0         401          400.7
+1         352          349.6
+2         213          212.8
+3         242          242.0
+4         153          153.0
+5         451          451.0
+6         211          210.0
+7         308          307.7
+8         256          256.0
+9         149          147.5
+
+[SUCESS] Model saved and ready for integration at: C:\Users\swana\Desktop\Swananada\BTech\Sixth_Sem\Internet of Things\iotPROJ\backend\aqi_ml_model.pkl

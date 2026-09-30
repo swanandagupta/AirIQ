@@ -1,0 +1,33 @@
+{
+  "serial": {
+    "port": "COM10",
+    "baudrate": 115200,
+    "timeout": 5
+  },
+  "database": {
+    "path": "data/air_quality.db",
+    "retention_days": 7
+  },
+  "analytics": {
+    "moving_average_window": 10,
+    "anomaly_threshold": 2.0
+  },
+  "spatial": {
+    "grid_size": 0.001,
+    "heatmap_radius": 200
+  },
+  "context": {
+    "search_radius_km": 2,
+    "cache_ttl_seconds": 3600
+  },
+  "server": {
+    "host": "0.0.0.0",
+    "port": 5000
+  },
+  "engine": {
+    "mq135_weight": 0.7,
+    "mq137_weight": 0.3,
+    "temporal_range": 0.10,
+    "spatial_range": 0.15
+  }
+}

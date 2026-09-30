@@ -1,0 +1,15 @@
+﻿__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+.env
+.claude/settings.local.json
+*.log
+*.db
+*.mp4
+
+iotPROJ/database/train.csv
+iotPROJ/database/test.csv
+iotPROJ/backend/aqi_ml_model.pkl

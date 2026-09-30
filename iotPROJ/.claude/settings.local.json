@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir:*)",
+      "Bash(curl -s http://localhost:5000/api/heatmap)",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(f\\\\\"Heatmap points: {len\\(d.get\\('heatmap',[]\\)\\)}, Clusters: {len\\(d.get\\('clusters',[]\\)\\)}, Hotspots: {len\\(d.get\\('hotspots',[]\\)\\)}\\\\\"\\)\")",
+      "Bash(curl -s http://localhost:5000/)",
+      "Bash(curl -s http://localhost:5000/api/alerts)",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(f\\\\\"Alerts: {d.get\\('count'\\)}\\\\\"\\)\" curl -s http://localhost:5000/api/insights)",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(f\\\\\"Insights: {d.get\\('count'\\)}\\\\\"\\)\" curl -s http://localhost:5000/api/history?hours=1)",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(f\\\\\"History readings: {d.get\\('statistics',{}\\).get\\('count',0\\)}\\\\\"\\)\")",
+      "Bash(curl -s \"http://localhost:5000/api/location/40.7128/-74.0060\")",
+      "Bash(python -m json.tool)",
+      "Bash(taskkill /F /IM python.exe)",
+      "Bash(python backend/main.py)",
+      "Bash(curl -s http://localhost:5000/debug/static)",
+      "Bash(python -c ':*)",
+      "Bash(netstat -ano)",
+      "Bash(findstr :5000)"
+    ]
+  }
+}
